@@ -27,6 +27,8 @@ add_executable(thread-safe-queue ThreadSafeQueue.cpp)
 
 add_executable(thread-safe-map ThreadSafeMap.cpp)
 
+add_executable(concurrent-queue ConcurrentQueue.cpp)
+
 add_executable(concurrent-map ConcurrentMap.cpp)
 
 add_executable(concurrent-list ConcurrentList.cpp)
