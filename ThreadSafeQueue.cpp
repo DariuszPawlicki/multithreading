@@ -30,6 +30,8 @@ public:
 
         value = std::move(*data.front());
         data.pop();
+
+        return true;
     }
 
     std::shared_ptr<T> tryPop() {

@@ -2,9 +2,7 @@
 #include <mutex>
 #include <memory>
 #include <exception>
-
-
-struct EmptyStackException : std::exception {};
+#include <condition_variable>
 
 
 template<typename T>
@@ -19,32 +17,58 @@ public:
 	ThreadSafeStack& operator=(const ThreadSafeStack& rhs) = delete;
 
 	void push(T item) {
+        std::shared_ptr<T> item_ptr = std::make_shared<T>(item);
 		std::lock_guard lock{ m };
-		data.push(std::move(item));
+		data.push(item_ptr);
+        cond_var.notify_one();
 	}
 
-	std::shared_ptr<T> pop() {
-		std::lock_guard lock{ m };
+    bool tryPop(T& value) {
+        std::scoped_lock lock{ m };
+        if (data.empty()) {
+            return false;
+        }
+
+        value = std::move(data.top());
+        data.pop();
+
+        return true;
+    }
+
+	std::shared_ptr<T> tryPop() {
+		std::scoped_lock lock{ m };
 		if (data.empty()) {
-			throw EmptyStackException();
+			return std::shared_ptr<T>();
 		}
 
-		std::shared_ptr<T> popped = std::make_shared<T>(std::move(data.top()));
+		std::shared_ptr<T> popped{data.top()};
 		data.pop();
 
 		return popped;
 	}
 
-	void pop(T& value) {
-		std::lock_guard lock{ m };
+    void waitAndPop(T& value) {
+        std::unique_lock lk{m};
+        cond_var.wait(lk, [&]{
+           return !data.empty();
+        });
 
-		if (data.empty()) {
-			throw EmptyStackException();
-		}
+        value = *data.top();
+        data.pop();
+    }
 
-		value = std::move(data.top());
-		data.pop();
-	}
+    std::shared_ptr<T> waitAndPop() {
+        std::unique_lock lk{m};
+        cond_var.wait(lk, [&]{
+            return !data.empty();
+        });
+
+        std::shared_ptr<T> popped{data.top()};
+        data.pop();
+
+        return popped;
+    }
+
 
 	bool empty() const {
 		std::lock_guard lock{ m };
@@ -52,8 +76,9 @@ public:
 	}
 
 private:
-	std::stack<T> data;
+	std::stack<std::shared_ptr<T>> data;
 	mutable std::mutex m;
+    std::condition_variable cond_var;
 };
 
 
