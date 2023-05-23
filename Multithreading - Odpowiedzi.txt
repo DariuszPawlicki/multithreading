@@ -1,0 +1,505 @@
+### Podstawowa więdza o wątkach
+
+1. Jak utworzyć wątek z funkcją oczekującą wartość/referencję/pointer?
+
+    int x = 1;
+
+    std::thread(func, x);
+    std::thread(func, std::ref(x));
+    std::thread(func, &x);
+
+
+2. Jak utworzyć wątek wywołujący metodę na utworzonym już obiekcie?
+
+    std::thread(&ObjectClass::func, object_instance, args);
+
+
+3. Jakie metody służą do zarządzania utworzonymi wątkami i co robią?
+
+    detach - wątek zostaje "odłączony" od obiektu std::thread i kontynuuje działanie w tle
+    join - wątek rodzic czeka aż joinowany wątek zakończy swoje działanie
+    joinable - zwraca true jeśli wątek może być zjoinowany lub detachowany
+
+
+4. Co się stanie i dlaczego jeśli nie zarządzimy utworzonymi wątkami i wyjdziemy z programu?
+
+    Zostanie wywołana funkcja std::terminate która przerwie działanie programu.
+    W momencie wyjścia ze scope'u wątku nie wiemy w jaki stanie się on znajduje, 
+    jeżeli zostawimy wątek bez nadzoru, może on chociażby działać na zasobach systemowych
+    takich jak pliki i blokować do nich dostęp.
+
+
+5. Napisz przykładową implementację joining_thread.
+
+    JoiningThread.cpp
+    
+
+6. Skąd wziąć informacje o dostępnym "prawdziwych" wątkach?
+
+    std::thread::hardware_concurrency
+
+
+7. Co zwróci std::thread::hardware_concurrency() jeśli nie ma dostępnej informacji od maszyny?
+    
+    Zwróci zero.
+
+
+8. Czym jest "context switching" i jak się ma do liczby "prawdziwych" wątków?
+    
+    Context switching to proces zapisywania stanu aktualnego wątku - rejestrów procesora - i 
+    przywracania stanu innego wątku, który będzie wykonywany przez procesor.
+
+
+9. Zakładając, że w mainie chcemy użyć "thread pool" do procesowania danych, z iloma wątkami należy utworzyć ten "thread pool" dla najbardziej optymalnego procesowania?
+
+    Zależy to głównie od sprzętu. Najbardziej optymalna będzie liczba wątków nie wykraczająca
+    poza dostępne "prawdziwe" wątki procesora, unikniemy w ten sposób narzutu związanego z context switchingiem.
+
+
+10. W jaki sposób możemy stwierdzić w jakim jesteśmy wątku (programistycznie)?
+
+    std::this_thread::get_id
+
+
+### Współdzielenie zasobów między wątkami
+
+11. Czym jest race condition?
+    
+    Race condition to sytuacja, w której wynik działania programu zależy od 
+    kolejności wykonania kodu przez dwa lub więcej wątków.
+
+
+12. Jak unikać race condition?
+
+    W celu unikanięcia race condition używane są mutexy.
+
+
+13. Czym jest data race?
+
+    To sytuacja w której wątki próbują uzyskać dostęp 
+    do tego samego obszaru pamięci, gdzie co najmniej jeden wątek
+    modyfikuje wartości w tym obszarze.
+
+
+14. Jak unikać data race?
+    
+    Można ich uniknąć za pomocą mutexów.
+    
+
+15. Napisz przykład z data race i następnie go popraw.
+
+    DataRace.cpp
+
+
+16. Co jest najlepszym rozwiązaniem na uniknięcie problemów takich jak data race, race condition itp?vrsw3
+    
+    - Zapewnienie odpowiednich mechanizmów synchronizacji - mutexy, cond variable itp.
+
+    - Upewnienie się, że krytyczna sekcja kodu może być dostępna wyłącznie dla jednego wątku
+
+
+17. Czym jest mutex i jak działa?
+
+    Mutex to obiekt, który synchronizuje dostęp do danych, umożliwiając
+    wykonanie konkretnego fragmentu kodu wyłącznie jednemu wątkowi.
+
+
+18. Jakie są rodzaje mutexów i czym się różnią?
+
+    - std::mutex
+    - std::shared_mutex
+    - std::shared_timed_mutex
+    - std::recursive_mutex
+
+
+19. Czym jest deadlock?
+
+    Deadlock to sytuacja, kiedy dwa lub więcej wątków blokują
+    wzajemnie swoje dalsze wykonywanie z np. powodu mutexów lub joinowania.
+
+
+20. Jak unikać deadlocków?
+
+    - unikanie wykonywania kodu użytkownika kiedy wątek lockuje mutex,
+      ponieważ kod ten może próbować pozyskać ten mutex ponownie
+
+    - możemy lockować mutexy w tej samej kolejności, std::lock, std::lock_guard,
+      C++17 std::scoped_lock (variadic template)
+
+    - używać hierarchicznych mutexów
+
+
+21. Napisz przykład z deadlock i następnie go popraw.
+
+    Deadlock.cpp
+
+
+22. Czy można uzyskać deadlock bez używania mutexów?
+
+    Można, na przykład kiedy dwa wątki joinują siebie wzajemnie,
+    czekając w ten sposób w nieskończoność na zakończenie drugiego wątku.
+
+
+23. Czym się różnia std::lock_guard, std::scoped_lock, std::unique_lock. W jakich sytuacjach ich się używa?
+
+    - std::lock_guard i std::scoped_lock to locki o podobnej funkcjonalności, z tym że scoped_lock pochodzi
+      z nowszego standardu i rozszerza niejako działanie lock_guarda, umożliwia lockowanie wielu mutexów naraz
+      z zapewnieniem iż ich pozyskiwanie nie spowoduje deadlocka, implementują one mechanizm RAII, mutexy są lockowane
+      przy konstrukcji i unlockowane przy destrukcji, w nowszych standardach powinno preferować się użycie std::scoped_lock,
+      używane są w sytuacjach gdy nie potrzebny nam jest dostęp do większej ilości operacji na mutexie
+
+
+    - std::unique_lock to obiekt, który różni się od innych locków tym, że umożliwia m.in.
+      transfer ownershipu - lock można przenosić - do tego posiada możliwość lockowania
+      mutexu na określoną ilość czasu oraz opóźnienia jego lockowania - mutex nie zostaje lockowany od razu
+      podczas konstrukcji obiektu typu std::unique_lock, mutex unlockowany jest podczas destrukcji obiektu
+      jeżeli obiekt ten jest "właścicielem" mutexu, klasa ta używana jest gdy potrzebujemy mieć
+      większą kontrolę nad mutexem
+
+
+24. Jakie narzędzia można użyć, by kawałek kodu wykonał się tylko raz, przez którykolwiek z wątków?
+    
+    std::call_once z flagą std::once_flag
+
+
+25. Czym jest spin lock i jakie są wady i zalety? Zaimplementuj go.
+
+    Celem spin locka jest umożliwienie dostępu do pewnych danych wyłącznie jednemu wątkowi,
+    z tym że w przeciwieństwie do mutexa działa on w oparciu o busy-waiting, sprawdza
+    on w pętli czy może uzyskać dostęp do danych. 
+    Zaletą spin locka jest to, że uzyskuje on dostęp do danych w praktycznie tym samym
+    momencie gdy dostęp do nich zostanie umożliwiony.
+    Wadą jest to, że czas procesora marnowany jest na ciągłe próby uzyskania locka.
+
+    SpinLock.cpp
+
+
+26. zaimplementuj unique locka
+
+    UniqueLock.cpp
+
+
+### Synchronizacja
+27. Jakie są zasadnicze różnice między std::thread i std::async?
+
+    std::thread wykonuje daną funkcję w nowym wątku, jest ona wykonywana w sposób synchroniczny,
+    std::async w przeciwieństwie do std::thread może zostać uruchomiony w nowym wątku, lub nie - w zależności od przekazanego parametru - 
+    dodatkowo funkcja wykona się w sposób asynchroniczny, a ponadto std::async zwraca obiekt typu std::future, który umożliwia dostęp 
+    do wartości zwracanej przez wykonywaną asynchronicznie funkcję
+
+
+28. Jakie są opcje uruchamiania std::async?
+
+    - std::launch::async - wykonuje funkcję w nowym wątku
+    - std::launch::deferred - wykonuje funkcję w tym samym wątku
+
+
+29. Jakie są różnice między stosowaniem std::async, std::packaged_task i std::promise w kontekście std::future?
+
+    - std::async - wywołuje przekazaną funkcję asynchronicznie (w nowym wątku lub nie) i zwraca future,
+    do którego przekazywana jest wartość po jej wykonaniu
+
+    - std::packaged_task - za wywołanie funkcji do niego przypisanej odpowiedzialny jest użytkownik, 
+    udostępnia on metodę ".get_future()" która zwraca future
+
+    - std::promise - tak jak std::packaged_task, udostępnia on metodę ".get_future()", która zwraca obiekt
+    typu future, jednakże nie wywołuje on żadnej metody, lecz umożliwia użytkownikowi możliwość
+    przekazania ustawienia wartości obiektu future z nim powiązanego za pomocą metody ".set_value()"
+
+
+30. Do czego służy std::shared_future?
+
+    Obiekt ten umożliwia dostęp do danych przekazywanych do obiektu future wielu consumerom, w przeciwieństwie
+    do std::future, może odwoływać się do niego wiele zmiennych a wartość którą zawiera może być wyciągana 
+    za pomocą metody "get" wielokrotnie.
+
+
+31. Jak zachowa się system, jeśli będziemy uruchamiać w np. w pętli std::async bez definiowania opcji uruchomienia i przekroczymy limit "prawdziwych" wątków?
+
+    Taski będą wykonywane synchronicznie w tym samym wątku w którym wywołano funkcję ".get()" na future.
+
+
+32. Na czym polega Continuation Concurrency w kontekście std::future? Kiedy warto ją stosować?
+
+    Kontynuacja polega na zdefiniowaniu szeregu operacji wykonywanych na obiektach typu future, zwracanych przez
+    dane funkcje, które zostaną wykonane w kolejności. 
+    Warto je stosować, gdy mamy do wykonania szereg operacji, które zależą od danych zwróconych
+    przez poprzednie funkcje, korzystając z metody ".then()" nie jesteśmy zmuszeni czekać na rezultat
+    wykonania poprzedniej funkcji, tym samym wykonując kod synchronicznie, wszystko dzieje się asynchronicznie.
+
+
+33. Po co stosujemy std::when_all lub std::when_any, skoro równie dobrze możemy czekać na std::future::get?
+
+    Wywołanie ".get()" z klasy std::future jest blokujące, std::when_all lub std::when_any umożliwia oczekiwanie
+    na wartość z obiektu future bez zbędnego oczekiwania i blokowania. 
+
+
+34. Do czego służy std::latch?
+
+    Jest to klasa służąca do synchronizacji wątków, działa ona jak licznik.
+    Przy tworzeniu obiektu podajemy w konstruktorze liczbę od której zacznie się odliczanie, 
+    jeżeli wartość licznika nie wynosi zero, blokuje on dany wątek przed dalszym wykonywaniem.
+    Pod odliczeniu do zera, obiektu tego nie da się "zresetować".
+
+
+35. Do czego służy std::barrier?
+
+    Tak samo jak latch, służy synchronizacji wątków, lecz działa on trochę inaczej.
+    Po pierwsze, jest on zdatny do ponownego wykorzystania po odliczaniu, po drugie
+    
+
+
+### Atomics i Memory Order
+
+36. Wytłumacz, co oznacza, że operacją jest `atomic`?
+
+    Oznacza to, że operacja jest niepodzielna, będzie ona wykonana w całości lub wcale, 
+    dane podlegające takiej operacji nie mogą być zastane w stanie pośrednim.
+
+
+37. Które operacje są atomic? x++, x+=1, x=x+1?
+
+    Tylko ostatnia nie jest atomiczna, ponieważ mamy tu do czynienia z dwoma operacjami
+    odczytaniem wartości i nadpisaniem wartości.
+
+
+38. Które operacje są atomic? int++, long++, float++, double++?
+
+    int++ i long++, standard określa specjalizację - a co za tym idzie, operacje arytmetyczne - std::atomic 
+    wyłącznie dla typów całkowitych, jednakże float/double może być atomiczny, ponieważ jest
+    trywialnie kopiowalny, można na nim wywoływac funkcje store/load/exchange
+
+
+39. Z jakiego powody powinno się korzystać z `member functions` atomiców zamiast `operator overloading`? (dwa powody)
+
+    1. Jeżeli nie chcemy korzystać z seq_cst memory orderingu powinniśmy korzystać z member functions,
+       ponieważ przy wywoływaniu operatorów na atomicach wykorzystywany jest domyślnie właśnie ten ordering.
+    
+    2. Jawne określanie memory order w member functions ułatwia poznanie intencji osoby,
+       która pisała dany kod.
+
+40. Co zwróci std::atomic<T>::is_lock_free() kiedy T będzie: struct A{long}, struct B{long, long, long} i dlaczego?
+
+    Dla pierwszego structa zwróci true a dla drugiego false.
+    Jest to spowodowane alignmentem. Jeżeli pamięć nie jest wyrównana do właściwych granic pamięci danej architektury
+    zapis/odczyt nie jest atomiczny, nie może wydarzyć się w jednym cyklu, ponieważ CPU fizycznie nie jest w stanie operować
+    na pamięci do której dostęp wymaga więcej niż jednego cyklu.
+
+41. Jaka jest różnica między compare_exchange strong vs weak? Dlaczego?
+
+    compare_exchange_weak nie gwarantuje powodzenia operacji wymiany, nawet jezeli wartość
+    expected jest równa wartości atomica.
+    Jest to spowodowane tym, że niektóre procesory nie posiadają pojedynczej instrukcji
+    umożliwiającej taką operację, przez co muszą posiłkować się kilkoma krokami w których trakcie
+    wykonywania może dojść np. do context switchingu.
+
+42. Czym jest std::memory_order_relax przy operacjach na atomic? 
+
+    Jest to memory order, który nie gwarantuje jakiejkolwiek kolejności
+    wykonywanych instrukcji, CPU/kompilator może dowolnie zarządzać ich kolejnością,
+    pozbywamy się w ten sposób relacji happens-before.
+
+43. Czym jest std::memory_order_acquire przy operacjach na atomic? Jak się mają operacje na nieatomicach wykonywane w tym wątku?
+
+    Ten memory order zezwala na synchronizację względem danego atomica, wprowadzamy relację happens-before
+    w odniesieniu do miejsca gdzie został użyty memory order release na tym atomicu, czyli
+    wszystkie zmiany które były wykonane przed releasem muszą być widoczne w miejscu wykorzystania memory_order_acquire.
+
+44. Czym jest std::memory_order_release? przy operacjach na atomic? Jak się mają operacje na nieatomicach wykonywane w tym wątku?
+
+    Zapewnia on, że rezultat operacji wykonanych przed nim będą widoczne w miejscu gdzie 
+    skorzystamy z memory_order_acquire.
+
+45. Czym jest relacja `happens-before`?
+
+    To relacja pomiędzy operacjami w kodzie, mówi ona 
+    o tym, że jeżeli operacja A jest happens-before B, to
+    efekty działania operacji A na pamięci są widoczne dla operacji B
+    przed wykonaniem operacji B. 
+    Dodać też należy, że relacja happens-before nie oznacza iż
+    w kodzie rzeczywiście najpierw będzie wykonana operacja A, chodzi
+    tu o wpływ tej operacji na dane.
+
+46. Czym jest relacja `synchronizes-with`?
+
+    To relacja odnosząca się wyłącznie do operacji na atomicach,
+    mówi ona o tym, że jeżeli odczyt wątek A zapisuje jakąś wartość, a wątek B ją odczytuje,
+    to mamy do czynienia z relacją synchronizes-with pomiędzy "storem" wartości a jej "loadem".
+    Wystąpienie tej relacji implikuje również relację happens-before.
+
+
+### Lock-based struktury
+
+47. Jaka jest różnica między `concurrent container` a `thread-safe container`?
+
+    Concurrent container, w przeciwieństwie do thread-safe containera, umożliwia
+    równoległe działanie na nim. Nie operuje on na pojedynczym mutexie, a zamiast
+    tego metody które udostępnia są możliwe do wykonywania równolegle przez różne wątki, 
+    nie blokuje on dostępu do danych pojedynczym mutexem, dzięki temu zmniejszamy serializację wątków.
+
+
+48. Jakie są głowne zasady (guidelines) przy projektowaniu `thread-safe` i `concurrent` `lock-based`struktur? 
+
+     Thread-safe:
+     1. Upewnienie się, że stan struktury która posiada broken invariants - spowodowane przez dany wątek - 
+     nie będzie widoczny dla pozostałych wątków.
+
+     2. Unikanie race-condition związanych z interfejsem, zapewniając funkcje
+     wykonywujące całe operacje zamiast konkretne jej kroki.
+
+     3. Upewnić się, że wyjątki nie zepsują stanu obiektu.
+
+     4. Zmniejszenie możliwości wystąpienia deadlocka poprzez zmniejszenie zakresu locka, lub
+     unikanie zagnieżdżonych locków.
+
+     Concurrent:
+     1. Sprawdzenie, czy zakres locków może zostać zmniejszony, aby większa część
+     operacji odbywała się bez lockowania.
+
+     2. Upewnienie się, czy można wydzielić dostęp do różnych części struktury za pomocą 
+     odrębnych mutexów.
+
+     3. Przeanalizowanie, czy wszystkie operacje wymagają tego samego poziomu ochrony.
+
+     4. Sprawdzenie, czy jakaś prosta zmiana w strukturze danych nie da nam większych możliwości
+     na true concurrency.
+    
+49. Zaimplementuj przykładową strukture ze współdzielonym zasobem by była `thread-safe`(np. queue, list, map).
+        
+    ThreadSafeStack.cpp
+    ThreadSafeQueue.cpp
+
+50. Zaimplementuj przykładową strukture ze współdzielonym zasobem był była `thread-safe` oraz miała pewien poziom `concurrency` ("fine-grained locking", np. stack, queue, hashmap, linked list).
+
+    ThreadSafeQueue.cpp
+    ConcurrentMap.cpp
+    ConcurrentList.cpp
+
+
+### Lock-free struktury
+51. Wytłumacz na czym polegają wywołania funkcji które są `blocking` i `non-blocking`. 
+52. Wytłumacz czym są struktury `lock-free`?
+53. Wytłumacz czym są struktury `wait-free`?
+54. Jakie są głowne zasady (guidelines) przy projektowaniu `lock-free` struktur?
+55. Zaimplementuj lock-free linked-list.
+
+### Architektura współbieżności
+56. Jakie techniki używamy do podziału pracy między wątki? (znana ilość pracy vs nieznana)
+57. Wymień czynniki wpływające na efektywność architektury współbieżnej, typowe pułapki i jak im przeciwdziałać?
+58. Po co i jak implementuje się `early stopping` w architekturze współbieżnej? (np. zrównoleglenie std::find)
+59. Jak możemy zrównoleglić prace, jeśli obecne kalkulacje zależą od wyniku poprzednich kalkulacji (np. zrównoleglenie std::partial_sum)
+
+### Zaawansowane zarządzanie wątkami
+60. Zaimplementuj prosty `thread pool`.
+61. Jak rozwiązać problem, kiedy wiele wątków czeka na wynik pracy, ale niewiele wątków wykonuje tę pracę?
+62. Jak rozwiązać problem, kiedy chcemy przerwać pracę wykonywaną przez dany wątek?
+
+### Zrównoleglone algorytmy
+63. Jak zrównoleglić algorytmy z STL?
+64. Czym jest `execution policy` i jakie są jej rodzaje? (trzy) 
+65. Jaki efekt na algorytmie mają `execution policy`?
+66. Podaj przykład uzyskania `undefined behaviour` wykorzystując `execution policy` na algorytmie `std::for_each`? Następnie napraw błąd.
+
+### Testowanie i debugowanie kodu wielowątkowego
+67. Jakie są typowe błedy z kategori `unwanted blocking`? Opisz je.
+
+    - Deadlock - dwa wątki czekają na wzajemne zakończenie pracy,
+    jest to blocking wait
+
+    - Livelock - analogicznie do deadlocka, z tym że nie jest on blocking wait,
+    np. bierze w nim udział spinlock
+
+    - I/O - wątek oczekuje na dane z zewnątrz i tym samym jego dalsze działanie
+    jest blokowane
+
+68. Jakie są typowe błedy z kategori `race condition`? Opisz je.
+
+    - Data Races - to problem pojawiający się wtedy, gdy więcej niż
+    jeden wątek operuje na danym fragmencie pamięci, z czego co najmniej jeden
+    z nich dokonuje operacji zapisu
+
+    - Broken Invariants - błąd ten objawia się wiszącymi wskaźnikami, ponieważ
+    inny wątek usunął dane, uszkodzeniami pamięci, wątek odczytuje niespójne wartości z
+    powodu częściowej modyfikacji danych przez inny wątek, wielokrotne ściąganie tych samych danych ze
+    stosu/kolejki
+
+    - Lifetime Issues - błąd ten ma miejsce wtedy, gdy czas życia wątku wykracza
+    poza czas życia danych, próbuje on wtedy uzyskać dostęp do usuniętych danych, może
+    on nawet nadpisywać dane innego obiektu, który znajduje się w tej samej lokacji do której
+    odwołuje się wątek
+
+69. Na co należy zwracać uwagę przy czytaniu i rewizji kodu wielowątkowego?
+
+    - Które dane muszą być i czy są chronione?
+
+    - Które linijki kodu mogą być wykonywane w danym momencie przez inne wątki?
+
+    - Jakie mutexy blokuje dany wątek a jakie pozostałe?
+
+    - Czy między operacjami wymagany jest ordering, jeśli tak to jak jest
+    on wymuszany?
+
+    - Czy dane wczytywane przez dany wątek są prawidłowe, czy mogły zostać
+    zmodyfikowane przez inny wątek?
+
+    - Zakładając, że inny wątek może zmodyfikować pewne dane, co może to spowodować
+    i jak temu zapobiec?
+
+
+70. Jak należy testować kod wielowątkowy? Jakie są techniki testowania?
+
+    - Należy testować jak najmniejsze fragmenty kodu, który potencjalnie może
+    powodować błędy
+
+    - Warto wyeliminować "concurrency" w danym kodzie, aby upewnić się czy
+    jest to problem związany właśnie z wielowątkowością czy też nie
+
+    - Dobrze jest zastanowić się nad podziałem kodu na niezależne sekcje,
+    sekcja odczytu danych, transformacji i zapisu, wtedy możemy testować je
+    w taki sposób jak kod jednowątkowy
+
+    Mamy 3 techniki testowania:
+
+    - Brute Force - polega ona na wielokrotnym uruchamianiu kodu
+    w celu zaobserwowania ewentualnych błędów związanych ze schedulingiem wątków.
+    Im więcej razy zostanie uruchomiony kod, tym większa szansa na zaobserwowanie ewentualnego błędu.
+    Pewność poprawności kodu zależy od liczby poprawnych wykonań kodu w danym teście,
+    przy jednokrotnym uruchomieniu pewność ta jest niska, przy wielokrotnym duża, jednakże
+    zależy to też od ilości testowanego kodu - im mniejsza ilość kodu tym lepiej.
+    Jest to spowodowane faktem, iż ilość możliwych permutacji wykonywanych operacji przez wiele wątków
+    na małej ilości kodu jest o wiele mniejsza niż na większej ilości.
+    Należy też zwrócić uwagę na sposób w jaki napisaliśym test, ponieważ może się zdarzyć tak, że jego
+    forma uniemożliwi wystąpienie błędu, podczas gdy w realnym działaniu problem ten wystąpić już może.
+    Technika ta pozwala uzyskać zatem pewną dozę pewności poprawności działania kodu, jednakże
+    nie gwarantuje znalezienia wszystkich problemów.
+
+    - Combination Simulation Testing - opiera się ona na symulacji prawdziwego
+    środowiska wykonawczego - np. za pomocą maszyn wirtualnych.
+    Podczas wykonania kodu należy rejestrować sekwencje dostępu do danych,
+    locków i operacji atomicznych przez każdy wątek, później możemy wykorzystać
+    te sekwencje w teście aby poddać analizie każdą dostępną kombinację
+    wykonywanych operacji w celu wykrycia race conditions i deadlocków.
+    Tak jak w przypadku techniki Brute Force, czas testowania drastycznie wzrasta
+    wraz z rozmiarem testowanego kodu i ilością wątków, najlepiej sprawdza się ona
+    podczas testowania pojedynczych fragmentów kodu aniżeli całej aplikacji.
+
+    - Detecting Problems With Special Library - technika ta opiera się na wykorzystaniu
+    specjalnej implementacji biblioteki zawierającej "synchronization primitives".
+    Dzięki niej dostajemy możliwość wglądu np. w to, jakie mutexy aktualnie są
+    lockowane kiedy wątki uzyskują dostęp do danych, dzięki czemu możemy zweryfikować
+    czy właściwy mutex był zablokowany przez dany wątek w momencie pozyskiwania dostępu
+    do danych.
+    Kolejną możliwością tej biblioteki byłoby raportowanie kolejności blokowania
+    kilku mutexów, jeżeli któryś z wątków robiłby to w inny sposób mielibyśmy do czynienia
+    z potencjalnym deadlockiem.
+    Następną opcją byłaby implementacja "synchronziation primitives" w taki sposób,
+    aby dać możliwość kontroli np. nad tym który wątek jest "wybudzany" poprzez wywołanie
+    funkcji "notify_one" obiektu "condition_variable", co umożliwiłoby zaplanowanie dokładnych
+    scenariuszy testowych i ich realizację.
+
+
+71. Napisz test sprawdzający prawidłowe działanie `push` i `pop` na kolejce `thread-safe` w środowisku wielowątkowym.
+
+    PopPushTest.cpp
+
+
