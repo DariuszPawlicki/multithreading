@@ -96,7 +96,8 @@ private:
 
             if (entry != data.end()) {
                 entry->second = value;
-            } else {
+            }
+            else {
                 data.emplace_back(key, value);
             }
         }

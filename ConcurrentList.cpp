@@ -11,7 +11,7 @@ public:
     ConcurrentList(const ConcurrentList& rhs) = delete;
     ConcurrentList& operator=(const ConcurrentList& rhs) = delete;
 
-    void pushFront(const T& value){
+    void push(const T& value){
         std::unique_ptr<T> new_node = std::make_unique<Node>(value);
 
         std::lock_guard<std::mutex> lock{head.mutex};
@@ -35,7 +35,7 @@ public:
     }
 
     template<typename Predicate>
-    std::shared_ptr<T> findFirstIf(Predicate pred) {
+    std::shared_ptr<T> getItemIfExsits(Predicate pred) {
         Node* current = &head;
         std::unique_lock<std::mutex> lock{head.mutex};
 
@@ -55,7 +55,7 @@ public:
     }
 
     template<typename Predicate>
-    void removeIf(Predicate pred) {
+    void removeIfExists(Predicate pred) {
         Node* current = &head;
         std::unique_lock<std::mutex> lock{head.mutex};
 

@@ -4,236 +4,132 @@
 #include <future>
 #include <cassert>
 #include <iostream>
-#include <condition_variable>
+#include <gtest/gtest.h>
 
 
 template<typename T>
-class ThreadSafeQueue {
+class ConcurrentList {
 public:
-    ThreadSafeQueue() {}
+    ConcurrentList() = default;
 
-    ThreadSafeQueue(const ThreadSafeQueue& rhs) {
-        data = rhs.data;
+    void push(const T& item){
+        std::unique_ptr<Node> new_node = std::make_unique<Node>(item);
+
+        std::lock_guard<std::mutex> lock{head.mutex};
+
+        new_node->next = std::move(head.next);
+        head.next = std::move(new_node);
     }
 
-    ThreadSafeQueue& operator=(const ThreadSafeQueue& rhs) = delete;
+    template<typename Pred>
+    std::shared_ptr<T> getItemIfExsits(Pred pred) {
+        Node* current = &head;
+        std::unique_lock<std::mutex> lock{head.mutex};
 
-    void push(T value) {
-        auto new_value = std::make_shared<T>(std::move(value));
-        std::lock_guard lock{ m };
-        data.push(new_value);
-        cond_var.notify_one();
-    }
+        while(Node* next = current->next.get()) {
+            std::unique_lock<std::mutex> next_lock{next->mutex};
+            lock.unlock();
 
-    std::shared_ptr<T> waitAndPop() {
-        std::unique_lock lock{ m };
-        cond_var.wait(lock, [&] { return !data.empty(); });
+            if(pred(*next->data)){
+                return next->data;
+            }
 
-        auto popped = data.front();
-        data.pop();
-
-        return popped;
-    }
-
-    void waitAndPop(T& value) {
-        std::unique_lock lock{ m };
-        cond_var.wait(lock, [&] { return !data.empty(); });
-
-        value = std::move(*data.front());
-        data.pop();
-    }
-
-    std::shared_ptr<T> tryPop() {
-        std::lock_guard lock{ m };
-        if (data.empty()) {
-            return std::shared_ptr<T>();
+            current = next;
+            lock = std::move(next_lock);
         }
 
-        auto popped = data.front();
-        data.pop();
-
-        return popped;
+        return std::shared_ptr<T>();
     }
 
-    bool tryPop(T& value) {
-        std::lock_guard lock{ m };
-        if (data.empty()) {
-            return false;
+    template<typename Pred>
+    void removeIfExists(Pred pred) {
+        Node* current = &head;
+        std::unique_lock<std::mutex> lock{head.mutex};
+
+        while(Node* next = current->next.get()) {
+            std::unique_lock<std::mutex> next_lock{next->mutex};
+
+            if(pred(*next->data)) {
+                std::unique_ptr<Node> old_next = std::move(current->next);
+                current->next = std::move(old_next->next);
+                next_lock.unlock();
+            }
+            else {
+                lock.unlock();
+                current = next;
+                lock = std::move(next_lock);
+            }
         }
-
-        value = std::move(*data.front());
-        data.pop();
-
-        return true;
     }
 
     bool empty() const {
-        std::lock_guard lock{ m };
-        return data.empty();
+        return head.next == nullptr;
     }
 
 private:
-    mutable std::mutex m;
-    std::queue<std::shared_ptr<T>> data;
-    std::condition_variable cond_var;
-};
-
-
-template<typename T>
-class FineGrainedQueue {
-public:
-    FineGrainedQueue() : head(std::make_unique<Node>()), tail(head.get()) {};
-    FineGrainedQueue(const FineGrainedQueue& rhs) = delete;
-    FineGrainedQueue& operator=(const FineGrainedQueue& rhs) = delete;
-
-    void push(T new_value) {
-        std::shared_ptr<T> new_data = std::make_shared<T>(std::move(new_value));
-
-        std::unique_ptr<Node> new_tail = std::make_unique<Node>();
-
-        Node* const new_tail_ptr = new_tail.get();
-
-        {
-            std::lock_guard lock{ tail_mutex };
-
-            tail->data = new_data;
-            tail->next = std::move(new_tail);
-            tail = new_tail_ptr;
-        }
-
-        cond_var.notify_one();
-    }
-
-    std::shared_ptr<T> tryPop() {
-        std::unique_ptr<Node> old_head = tryPopHead(); // deletion outside lock
-        return old_head->data ? old_head->data : std::shared_ptr<T>();
-    }
-
-    bool tryPop(T& value) {
-        std::unique_ptr<Node> old_head = tryPopHead(value);
-        return old_head != nullptr;
-    }
-
-    std::shared_ptr<T> waitAndPop() {
-        const std::unique_ptr<Node> old_head = waitPopHead();
-        return old_head->data;
-    }
-
-    void waitAndPop(T& value) {
-        const std::unique_ptr<Node> old_head = waitPopHead(value);
-    }
-
-    bool empty() {
-        std::lock_guard lock{ head_mutex };
-
-        return head.get() == getTail();
-    }
-
-private:
-    struct Node {
-        std::shared_ptr<T> data;
+    struct Node{
         std::unique_ptr<Node> next;
+        std::shared_ptr<T> data;
+        std::mutex mutex;
+
+        Node() : next() {}
+        explicit Node(const T& value) :
+                data(std::make_shared<T>(value)) {}
     };
 
-    std::unique_ptr<Node> tryPopHead() {
-        std::lock_guard lock{ head_mutex };
-        return (head.get() != getTail()) ? popHead() : std::unique_ptr<Node>();
-    }
-
-    std::unique_ptr<Node> tryPopHead(T& value) {
-        std::lock_guard lock{ head_mutex };
-
-        if (head.get() == getTail()) {
-            return std::unique_ptr<Node>();
-        }
-
-        value = std::move(*(head->data));
-
-        return popHead();
-    }
-
-    std::unique_ptr<Node> waitPopHead() {
-        std::unique_lock<std::mutex> lock{ waitForData() };
-        return popHead();
-    }
-
-    std::unique_ptr<Node> waitPopHead(T& value) {
-        std::unique_lock<std::mutex> lock{ waitForData() };
-        value = std::move(*head->data);
-
-        return popHead();
-    }
-
-    std::unique_lock<std::mutex> waitForData() {
-        std::unique_lock<std::mutex> lock{ head_mutex };
-
-        cond_var.wait(lock, [this]() {
-            return head.get() != getTail();
-        });
-
-        return std::move(lock);
-    }
-
-    std::unique_ptr<Node> popHead() {
-        std::unique_ptr<Node> old_head = std::move(head);
-        head = std::move(old_head->next);
-        return old_head;
-    }
-
-    Node* getTail() {
-        std::lock_guard lock{ tail_mutex };
-        return tail;
-    }
-
-    std::mutex head_mutex;
-    std::mutex tail_mutex;
-    std::condition_variable cond_var;
-    std::unique_ptr<Node> head;
-    Node* tail;
+    Node head;
 };
 
 
-void testConcurrentPushAndPopOnEmptyQueue() {
-    ThreadSafeQueue<int> q;
-
-    std::promise<void> go, push_ready, pop_ready;
-    std::shared_future<void> ready{go.get_future()};
+void testConcurrentPushAndFindList() {
+    std::promise<void> threads_ready;
+    std::promise<void> push_thread_ready;
+    std::promise<void> find_thread_ready;
+    std::shared_future<void> semaphore{threads_ready.get_future()};
     std::future<void> push_done;
-    std::future<int> pop_done;
+    std::future<std::string> search_done;
+    const std::string val{"xD"};
+
+    ConcurrentList<std::string> list;
 
     try {
-        push_done = std::async(std::launch::async, [&q, ready, &push_ready]{
-            push_ready.set_value();
-            ready.wait();
-            q.push(40);
+        push_done = std::async(std::launch::async, [&list, &push_thread_ready, &val, semaphore]{
+            push_thread_ready.set_value();
+            semaphore.wait();
+            list.push(val);
         });
 
-        pop_done = std::async(std::launch::async, [&q, ready, &pop_ready]{
-           pop_ready.set_value();
-           ready.wait();
-           return *q.tryPop();
+        search_done = std::async(std::launch::async, [&list, &find_thread_ready, &val, semaphore]{
+           find_thread_ready.set_value();
+           semaphore.wait();
+           return *list.getItemIfExsits([&val](const std::string& item) {
+               return item == val;
+           });
         });
 
-        push_ready.get_future().wait();
-        pop_ready.get_future().wait();
-        go.set_value();
+        push_thread_ready.get_future().wait();
+        find_thread_ready.get_future().wait();
+        threads_ready.set_value();
         push_done.get();
-        assert(pop_done.get() == 40);
-        assert(q.empty());
+
+        assert(search_done.get() == val);
+
+        std::cout << "Test passed" << std::endl;
     }
-    catch(...) {
-        go.set_value();
-        throw;
+    catch(const std::exception& e) {
+        threads_ready.set_value();
+        std::cout << e.what() << std::endl;
+        std::cout << "Test failed" << std::endl;
     }
 }
 
 
 int main() {
-    std::promise<int> p;
-    std::future<int> f{p.get_future()};
-
-    p.set_value(5);
-    f.wait();
-
-    std::cout << f.get() << std::endl;
+//    std::promise<int> p;
+//    std::future<int> f{p.get_future()};
+//
+//    p.set_value(5);
+//    f.wait();
+//    std::cout << f.get() << std::endl;
+    testConcurrentPushAndFindList();
 }

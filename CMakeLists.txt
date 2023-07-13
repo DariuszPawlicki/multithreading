@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(multithreading-exam)
 
+set(ASS "asdf")
+
 if(WIN32)
     add_compile_options("/std:c++latest")
 endif()
@@ -10,6 +12,10 @@ if(UNIX AND NOT APPLE)
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
+
+enable_testing()
+
+find_package(GTest REQUIRED)
 
 add_executable(joining-thread JoiningThread.cpp)
 
@@ -36,3 +42,11 @@ add_executable(concurrent-list ConcurrentList.cpp)
 add_executable(pop-push-test PopPushTest.cpp)
 
 add_executable(examples Examples.cpp)
+
+add_executable(lock-free-stack LockFreeStack.cpp)
+
+add_subdirectory(8)
+
+add_subdirectory(9)
+
+add_subdirectory(10)

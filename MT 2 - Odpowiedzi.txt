@@ -1,0 +1,255 @@
+### Synchronizacja
+
+29. Jakie są różnice między stosowaniem std::async, std::packaged_task i std::promise w kontekście std::future?
+
+    - std::async - wywołuje przekazaną funkcję asynchronicznie (w nowym wątku lub nie) i zwraca future,
+    do którego przekazywana jest wartość po jej wykonaniu
+
+    - std::packaged_task - za wywołanie funkcji do niego przypisanej odpowiedzialny jest użytkownik,
+    udostępnia on metodę ".get_future()" która zwraca future
+
+    - std::promise - tak jak std::packaged_task, udostępnia on metodę ".get_future()", która zwraca obiekt
+    typu future, jednakże nie wywołuje on żadnej metody, lecz umożliwia użytkownikowi możliwość
+    przekazania ustawienia wartości obiektu future z nim powiązanego za pomocą metody ".set_value()"
+
+
+30. Do czego służy std::shared_future?
+
+    Obiekt ten umożliwia dostęp do danych przekazywanych do obiektu future wielu consumerom, w przeciwieństwie
+    do std::future, może odwoływać się do niego wiele zmiennych a wartość którą zawiera może być wyciągana
+    za pomocą metody "get" wielokrotnie.
+
+
+32. Na czym polega Continuation Concurrency w kontekście std::future? Kiedy warto ją stosować?
+
+    Kontynuacja polega na zdefiniowaniu szeregu operacji wykonywanych na obiektach typu future zwracanych przez
+    dane funkcje, które zostaną wykonane w kolejności.
+    Warto je stosować, gdy mamy do wykonania szereg operacji, które zależą od danych zwróconych
+    przez poprzednie funkcje, korzystając z metody ".then()" nie jesteśmy zmuszeni czekać na rezultat
+    wykonania poprzedniej funkcji, tym samym wykonując kod synchronicznie, wszystko dzieje się asynchronicznie.
+
+
+33. Po co stosujemy std::when_all lub std::when_any, skoro równie dobrze możemy czekać na std::future::get?
+
+    Wywołanie ".get()" z klasy std::future jest blokujące, std::when_all lub std::when_any umożliwia oczekiwanie
+    na wartość z obiektu future bez zbędnego oczekiwania i blokowania.
+
+
+34. Do czego służy std::latch?
+
+    Jest to klasa służąca do synchronizacji wątków, działa ona jak licznik.
+    Przy tworzeniu obiektu podajemy w konstruktorze liczbę od której zacznie się odliczanie,
+    jeżeli wartość licznika nie wynosi zero, blokuje on dany wątek przed dalszym wykonywaniem.
+    Pod odliczeniu do zera, obiektu tego nie da się "zresetować".
+
+
+35. Do czego służy std::barrier?
+
+    Tak samo jak latch, służy synchronizacji wątków, lecz działa on trochę inaczej.
+    Po pierwsze, jest on zdatny do ponownego wykorzystania po odliczaniu, po drugie
+
+
+### Atomics i Memory Order
+
+41. Jaka jest różnica między compare_exchange strong vs weak? Dlaczego?
+
+    compare_exchange_weak nie gwarantuje powodzenia operacji wymiany, nawet jezeli wartość
+    expected jest równa wartości atomica.
+    Jest to spowodowane tym, że niektóre procesory nie posiadają pojedynczej instrukcji
+    umożliwiającej taką operację, przez co muszą posiłkować się kilkoma krokami w których trakcie
+    wykonywania może dojść np. do context switchingu.
+
+42. Czym jest std::memory_order_relax przy operacjach na atomic?
+
+    Jest to memory order, który nie gwarantuje jakiejkolwiek kolejności
+    wykonywanych instrukcji, CPU/kompilator może dowolnie zarządzać ich kolejnością,
+    pozbywamy się w ten sposób relacji happens-before.
+
+43. Czym jest std::memory_order_acquire przy operacjach na atomic? Jak się mają operacje na nieatomicach wykonywane w tym wątku?
+
+    Ten memory order zezwala na synchronizację względem danego atomica, wprowadzamy relację happens-before
+    w odniesieniu do miejsca gdzie został użyty memory order release na tym atomicu, czyli
+    wszystkie zmiany które były wykonane przed releasem muszą być widoczne w miejscu wykorzystania memory_order_acquire.
+
+44. Czym jest std::memory_order_release? przy operacjach na atomic? Jak się mają operacje na nieatomicach wykonywane w tym wątku?
+
+    Zapewnia on, że rezultat operacji wykonanych przed nim będą widoczne w miejscu gdzie
+    skorzystamy z memory_order_acquire.
+
+45. Czym jest relacja `happens-before`?
+
+    To relacja pomiędzy operacjami w kodzie, mówi ona
+    o tym, że jeżeli operacja A jest happens-before B, to
+    efekty działania operacji A na pamięci są widoczne dla operacji B
+    przed wykonaniem operacji B.
+    Dodać też należy, że relacja happens-before nie oznacza iż
+    w kodzie rzeczywiście najpierw będzie wykonana operacja A, chodzi
+    tu o wpływ tej operacji na dane.
+
+46. Czym jest relacja `synchronizes-with`?
+
+    To relacja odnosząca się wyłącznie do operacji na atomicach,
+    mówi ona o tym, że jeżeli odczyt wątek A zapisuje jakąś wartość, a wątek B ją odczytuje,
+    to mamy do czynienia z relacją synchronizes-with pomiędzy "storem" wartości a jej "loadem".
+    Wystąpienie tej relacji implikuje również relację happens-before.
+
+
+### Lock-free struktury
+
+53. Wytłumacz czym są struktury `wait-free`?
+
+    Jeżeli struktura jest wait-free oznacza to, że mamy gwarancję tego iż
+    dowolna ilość wątków na niej działająca, wykona swoje operacje w
+    ograniczonej ilości kroków bez względu na zachowanie innych wątków - compare_exchange w pętli nie jest wait free
+
+54. Jakie są głowne zasady (guidelines) przy projektowaniu `lock-free` struktur?
+
+    (strona 216)
+
+55. Zaimplementuj lock-free linked-list.
+
+
+### Architektura współbieżności
+
+56. Jakie techniki używamy do podziału pracy między wątki? (znana ilość pracy vs nieznana)
+
+    - można podzielić dane między N wątków zanim rozpoczniemy przetwarzanie,
+      każdy wątek będzie operował na przydzielonych mu danych
+
+    - można dzielić dane rekursywnie w trakcie operowania na nich - quicksort, nie
+      możemy podzielić danych zawczasu, ponieważ nie będziemy wiedzieć jak scalać ewentualnie posortowane połowy
+
+    - można dzielić pracę na podstawie typu danego zadania - jeden wątek obsługuje GUI,
+      drugi żądania sieciowe itp.
+
+    - można podzielić sekwencję pewnych zadań pomiędzy wątki na wzór pipeline'u -
+      np. tworzymy osobny wątek obsługujący pojedynczy etapu w sekwencji
+
+
+57. Wymień czynniki wpływające na efektywność architektury współbieżnej, typowe pułapki i jak im przeciwdziałać?
+
+    - data contention/cache ping-pong - jeśli dwa rdzenie korzystają z tych samych danych
+      to w momencie kiedy jeden z wątków modyfikuje te dane, cache drugiego rdzenia
+      musi zostać zaktualizowany co jest bardzo wolną operacją, przykładowo ma to miejsce w momencie
+      lockowania/unlockowania mutexu im więcej wątków z różnych rdzeni współdzieli ten mutex tym gorzej
+
+    - false sharing - sytuacja w której różne wątki nie współdzielą danych między sobą,
+      jednakże na poziomie pamięci cache leżą na tym samym cache linie co powoduje, że
+      mimo pozornego braku współdzielenia, modyfikacja danych prez jeden wątek spowoduje
+      konieczność uaktualnienia danych w cache'u innych rdzeni, rozwiązaniem może być
+      ustrukturyzowanie danych w taki sposób, aby dane do których dostęp uzyskuje dany wątek
+      leżały blisko siebie w pamięci, pomocna może też być funkcja "std::hardware_destructive_interference_size",
+      która zwraca ilość bajtów określającą minimalną odległość danych od siebie aby nie miało miejsca false sharing
+
+    - data proximity - jeżeli dane do których wątek uzyskuje dostęp są rozproszone po pamięci,
+      wtedy rośnie prawdopodobieństwo cache miss co tym samym powoduje konieczność załadowania
+      nowego cache line'a
+
+    - oversubscription - w momencie kiedy liczba aktywnych wątków przekracza
+      liczbę prawdziwych wątków mamy do czynienia z oversubscription co zmniejsza performance
+      z powodu task switchingu oraz problemów związanych z cachem jak data promity,
+      pomóc może funkcja "std::thread::hardware_concurrency", jednakże nie informuje ona
+      o ilości aktywnych aktualnie na systemie wątków
+
+
+58. Po co i jak implementuje się `early stopping` w architekturze współbieżnej? (np. zrównoleglenie std::find)
+
+    Jeżeli nie zatrzymamy wątków wykonujących jakąś pracę - od razu po spełnieniu kryteriów jej wykonania -
+    wtedy performance wykonania takiego algorytmu może być gorszy niż w momencie, gdy wykonalibyśmy go sekwencyjnie,
+    ponieważ w takim przypadku sekwencyjny algorytm po wykonaniu zadania od razu zakończy swoje działanie.
+    Można to zrobić używając np. std::atomic<bool> i wykonywać przetwarzanie danych sprawdzając
+    w każdym wątku wartość tej flagi aby w odpowiednim momencie wątek zakończył działanie.
+
+
+59. Jak możemy zrównoleglić prace, jeśli obecne kalkulacje zależą od wyniku poprzednich kalkulacji (np. zrównoleglenie std::partial_sum)
+
+    Możemy to zrobić przykładowo na dwa sposoby:
+
+    - dzielimy kontener na mniejsze części i liczymy sumę częściową dla każdego z tych
+    fragmentów osobno, po czym osobny wątek aktualizuje najpierw wartość ostatniego elementu kolejnego bloku - aby
+    wątki obsługujące inne bloki nie czekały bezczynnie - a następnie reszty elementów w tym bloku
+
+    -
+
+
+### Zaawansowane zarządzanie wątkami
+
+60. Zaimplementuj prosty `thread pool`.
+
+    - ThreadPool.cpp
+
+61. Jak rozwiązać problem, kiedy wiele wątków czeka na wynik pracy, ale niewiele wątków wykonuje tę pracę?
+
+    - do ThreadPoola można dodać metodę, która wywołana zdejmie task z kolejki - jeżeli
+    jakikolwiek znajduje się w niej - a który zostanie wykonany w wątku wywołującym tę metodę,
+    w ten sposób upewniamy się, że wątki oczękujące na wynik pracy innych wątków nie będą czekać
+    bezczynnie w nieskończoność, tak pozbywamy się deadlocka
+
+    - można użyć WorkStealingQueue, czyli kolejki która daje danemu wątkowi dostęp
+    do tasków znajdujących się w thread_local kolejce z taskami innego wątku
+
+62. Jak rozwiązać problem, kiedy chcemy przerwać pracę wykonywaną przez dany wątek?
+
+    - można stworzyć nowy wrapper na klasę std::thread, który posiadałby
+    flagę i metodę ustawiającą tę flagę, która wskazuje na to czy dany wątek powinien
+    przerwać swoje działanie
+
+    while(!done) {
+        interruption_point();
+        process_next_item();
+    }
+
+    - można dodać też funkcję interruptible_wait wykorzystującą jednocześnie condition_variable oraz
+    wspomnianą flagę, która umożliwi przerwanie po spełnieniu pewnego warunku
+
+
+### Zrównoleglone algorytmy
+63. Jak zrównoleglić algorytmy z STL?
+
+    - funkcje z stl posiadają overloady - np. std::find, std::transform - które
+    umożliwiają ich wykonanie równolegle, posiadają tę samą sygnaturę z wyjątkiem tego,
+    że w ich pierwszym parametrze określamy sposób w jaki zostanie wykonany dany algorytm
+
+
+64. Czym jest `execution policy` i jakie są jej rodzaje? (trzy)
+
+    - to wartość, którą przekazujemy jako parametr do overloadu algorytmu STL
+    aby określić sposób jego wykonania, pamiętać należy, iż ten parametr jest jedynie "zezwoleniem" a nie wymaganiem wykonania funkcji
+    w określony sposób, jej rodzaje to:
+
+        - sequenced_policy
+        - parallel_policy
+        - parallel_unsequenced_policy
+
+
+65. Jaki efekt na algorytmie mają `execution policy`?
+
+    Execution policices wpływają na:
+
+    - complexity funkcji
+    - zachowania w czasie rzucania wyjątków
+    - miejsce wykonania - zwykłe thready, GPU thready itp. -
+      i w jakiej kolejności kroki algorytmu zostaną wykonane
+
+    - sequenced_policy - funkcja uruchomiona z tą policy
+    nie jest wykonywana równolegle, jednak nie wszystkie operacje
+    muszą być wykonywane na tym samym wątku, ale musi
+    być zachowana konkretny porządek wykonywanych operacji, choć
+    nie jest on ten sam pomiędzy różnymi wywołaniami danej funkcji
+
+    - parallel_policy - funkcja może zostać uruchomiona równolegle,
+    na wątku ja wywołującym lub na innych wątkach, tak jak w przypadku sequenced_policy
+    operacje muszą zachować konkretny porządek, który nie jest precyzyjnie określony
+    pomiędzy różnymi wywołaniami danej funkcji
+
+    - parallel_unsequenced_policy - funkcja uruchomiona w ten sposób ma
+    możliwość wykonywania operacji w sposób unordered i unsequenced,
+    np. jedna operacja na danym wątku może zostać rozpoczęta przed
+    wykonaniem się poprzedniej, mogą one także migrować między różnymi wątkami,
+    w przypadku tej policy nie funkcja nie może korzystać z jakiejkolwiek synchronizacji,
+    ze względu na brak określonego porządku i sekwencyjności wykonywanych operacji
+
+
+66. Podaj przykład uzyskania `undefined behaviour` wykorzystując `execution policy` na algorytmie `std::for_each`? Następnie napraw błąd.
+
+    STLParallelAlgorithmsUB.cpp
